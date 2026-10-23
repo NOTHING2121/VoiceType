@@ -65,10 +65,20 @@ ZDR 改为默认关闭的尽力偏好，不再是润色前提或无端点时硬�
 
 同步 `design.md` 第 4.2 节、偏好留存、验收和 README。运行文档一致性及 Git 差异检查；尚无工程，因此没有实际规则单测、构建或语音会话，不声称延迟达标。只修订设计，等待整体确认后实现；`agent.md` 保持原样。
 
-## 后续里程碑（尚未开始）
+## 步骤 2：菜单栏工程与测试入口（2026-10-23）
 
-- [ ] 用户确认 `design.md`。
-- [ ] 创建 Swift 5.9、macOS 13+ 菜单栏应用工程，配置 `LSUIElement`。
+用户已授权按当前设计开始本阶段实现：UI 仅图标和退出，系统功能使用假模块。建立零第三方依赖的 Swift Package，包含 VoiceTypeCore 库、VoiceType 菜单栏 executable 和测试目标。Swift tools 5.9、Swift 5 语言模式、macOS 13 部署目标；SwiftUI MenuBarExtra + AppKit accessory，Info.plist 为 LSUIElement=true。建立系统模块协议、纯数据类型与文本清洗基础，提供可重复的 App 打包脚本。
+
+实际验证：核心库 Debug 编译通过；Release App 构建通过，生成 build/VoiceType.app；plist、bundle 文件及 ad-hoc 签名验证通过。标准测试入口真实运行 1 个安全信号冒烟用例并通过。未启动 GUI，不把源码检查当作真实鼠标菜单验收。
+
+工具链限制：本机只有 Command Line Tools，Swift 6.4、macOS 27.0.1 arm64，没有完整 Xcode／XCTest framework。测试采用工具链自带 Swift Testing，并显式加载已有 TestingMacros 插件；源码保留完整 Xcode／Swift 5.9 下的 XCTest 兼容入口。本机 Testing 运行库最低 macOS 14，产品部署目标仍为 13；当前未在 macOS 13 或 Swift 5.9 实机验证。SwiftPM 专用配置／缓存写入经过执行权限流程，不改全局开发配置、不下载依赖。
+
+语音会话及实测延迟：无。状态机与端到端假流程尚在本阶段后续步骤验证，不把这一个冒烟测试当作全套通过。
+
+## 后续里程碑
+
+- [x] 用户授权按 `design.md` 开始菜单栏骨架与假模块测试阶段。
+- [x] 创建 Swift 5.9、macOS 13+ 菜单栏应用工程，配置 `LSUIElement`。
 - [ ] 实现纯逻辑 `SessionStateMachine` 及单元测试。
 - [ ] 实现 Onboarding、权限引导与设置框架。
 - [ ] 实现 `HotkeyMonitor` 按下／松开事件。
