@@ -19,7 +19,7 @@ Swift 5.9，SwiftUI + AppKit，macOS 13+。应用设置 `LSUIElement`，不显�
 - `HotkeyMonitor`：全局右 Option 按下／松开、Esc 与组合键事件。
 - `AudioRecorder`：AVAudioEngine 采集、16kHz 单声道转换和本地声音检测。
 - `Transcriber`：SFSpeechRecognizer 字幕与最终识别，端侧优先，仅经事先同意允许服务器路径。
-- `TextProcessor`：本地清洗加可关闭／超时跳过的模型润色；隐私模式不调用云模型，ZDR 仅作可选偏好。
+- `TextProcessor`：基础格式清洗加可选增强。“删除孤立语气词”“清理句首口头语”分别默认关闭，Onboarding 展示示例并由用户明确选择，设置中可修改；模型不能绕过选择。隐私模式不调用云模型，ZDR 仅作可选偏好。
 - `TextInserter`：默认安全，仅 `AXSecureTextField` 或安全输入为 true 时阻断。正常链为 AX → 未执行／确定未写入时粘贴 → 复制；应用切换则直接复制，HUD 显示“已复制，按 command+v粘贴”，不强行切回应用或发送 Cmd+V。写入结果未知不重发；自动粘贴后 500ms 仅版本匹配时恢复，copy-only 不恢复。
 - `SessionStateMachine`：唯一状态源，纯 Swift reducer，可用虚拟时间单测。
 - HUD、Onboarding、设置／历史：反馈、授权、配置与留存控制。
