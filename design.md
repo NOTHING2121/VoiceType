@@ -1,6 +1,6 @@
 # VoiceType 设计
 
-状态：**已进入实现：菜单栏骨架、纯状态机与系统假实现已完成；真实系统适配器尚未接入**。本设计以仓库 `agent.md` 和本次交互要求为准，替代初始化 README 中的“OpenRouter 音频识别”方案。技术栈为 Swift 5.9、SwiftUI + AppKit、macOS 13+；通过 `LSUIElement` 作为无 Dock 图标的菜单栏应用运行。
+状态：**已进入实现：纯状态机、假实现回归，以及真实主链路（右 Option、AVAudioEngine、Apple Speech、本地清洗、AX → paste → copy、不抢焦点 HUD）已接入；实机听写验收、OpenRouter 润色、Onboarding 页面与历史尚未完成**。本设计以仓库 `agent.md` 和本次交互要求为准，替代初始化 README 中的“OpenRouter 音频识别”方案。技术栈为 Swift 5.9、SwiftUI + AppKit、macOS 13+；通过 `LSUIElement` 作为无 Dock 图标的菜单栏应用运行。
 
 主链路：按键 → AVAudioEngine 录音 → Apple Speech 流式识别并添加标点 → 本地规则清洗 → 可选 OpenRouter **文本**润色 → 插入。OpenRouter 默认关闭；没有账号、密钥或网络也能使用受支持语言的端侧主链路。
 

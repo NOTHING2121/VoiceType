@@ -100,7 +100,12 @@ ZDR 改为默认关闭的尽力偏好，不再是润色前提或无端点时硬�
 最终源码再次执行带覆盖率全套测试，7入口／177场景／0失败；覆盖率和xUnit重新导出。更新README构建／测试命令、design实现状态和文档校验器，文档一致性、bash语法与Git差异检查通过。用户agent.md散列仍为初始化读取值，保持原样且未纳入提交。
 
 本机交付目录 `../outputs/voicetype/`：`VoiceType.app`、`VoiceType-app.zip`、`VoiceType-test-results.zip`。可直接阅读 [完整测试报告](../outputs/voicetype/test-results/test-report.md)；测试归档包括实际原始输出、原生7入口xUnit、176场景名称清单、真实覆盖率与8条虚拟会话指标。两份zip解包校验通过；交付App再次验证签名。不发布、不安装、不替用户启动、不下载依赖；真实语音会话数量仍为0。
-
+## 步骤 6：真实主链路接入（2026-10-23）
+新增 `VoiceTypeSystem` 库，核心库仍不依赖系统框架。真实适配器：`SystemHotkeyMonitor`（被动 NSEvent 监听，`HotkeyInterpreter` 用设备位 0x40 区分右 Option，会话中按通用 Option 位补发漏掉的松键）、`SystemAudioRecorder`（AVAudioEngine 只在会话中开麦，AVAudioConverter 转 16kHz 单声道，RMS 声音检测）、`SpeechTranscriber`（`addsPunctuation`，`requiresOnDeviceRecognition` 跟随冻结策略，partial 驱动 HUD，final 为结果，1110 无语音映射为空 final）、`LocalTextProcessor`（复用已测本地规则；润色未接入，请求即安全降级）、`SystemTextInserter`（AX selectedText 写入后有界读回验证；确定未写入才发一次 Cmd+V；剪贴板多 item／多类型快照，500ms 后 changeCount 仍为写入版本才恢复，连续粘贴沿用最初原内容；最后复制提示；每步重测 `AXSecureTextField` 与 `IsSecureEventInputEnabled()`）、`LiveScheduler`、`SystemEnvironmentProbe`、JSONL `MetricsLog`。
+HUD 为 `.nonactivatingPanel` 的 NSPanel 子类，`canBecomeKey/Main` 恒 false、忽略鼠标、`orderFrontRegardless`，显示识别方式、实时字幕和结果文案。reducer 新增只读 `hudMessage`／`liveCaption` 与可配置插入看门狗（默认 180ms 不变，真实链路 500ms，给 AX／paste 读回验证留余量）。菜单：权限状态及系统设置入口、识别语言、隐私模式、Apple 服务器识别同意（开启前弹说明，仅在当前语言不支持端侧或已开启时显示）、取消当前听写、延迟记录、退出。Info.plist 补齐麦克风与语音识别用途说明；ad-hoc 签名改为按 bundle ID 的指定要求，减少重建后重新授权。
+实际验证：`scripts/test.sh` 核心 203 个场景（新增 27 个：按键解析、AX 观察判定、语言选择、HUD 文案、看门狗）＋系统适配层 13 个（隔离命名 NSPasteboard 上真实快照／恢复／版本跳过／重叠粘贴、48k 双声道与 44.1k 转 16k、RMS、声音检测、指标脱敏）＋冒烟 1 个全部通过。首轮发现 1 处测试假设错误：重采样器会暂存约 14ms 尾部样本，断言改为“不超过理论值且暂存 <30ms”。Release 构建与 `codesign --verify --deep --strict` 通过。`--hud-selftest` 实测 6 个采样点：HUD 可见 5 次，前台应用始终为原应用，VoiceType 未激活、无 key window，HUD 非 key／main。
+偏差与已知限制：被动监听不吞掉 Esc（目标应用也会收到 Esc）；全局监听依赖辅助功能权限而非输入监控；分段轮换无重叠去重；剪贴板快照在主线程同步读取，超大内容或延迟提供的数据可能卡顿；Cmd+V 按 ANSI 键位发送；指标 7 天清理未做。测试中两次经 `open --args` 启动未带上自检参数而进入正常模式，可能在屏幕上弹出过授权请求，进程已结束。
+语音会话及实测延迟：0。真实麦克风、Speech、AX 和备忘录插入需要用户授权后实机验收；每次会话会写入 `~/Library/Application Support/VoiceType/metrics.jsonl`。
 ## 后续里程碑
 
 - [x] 用户授权按 `design.md` 开始菜单栏骨架与假模块测试阶段。
@@ -108,10 +113,11 @@ ZDR 改为默认关闭的尽力偏好，不再是润色前提或无端点时硬�
 - [x] 实现纯逻辑 `SessionStateMachine` 及单元测试。
 - [x] 实现系统模块协议、假实现、虚拟调度和端到端回归。
 - [x] 完成本阶段App打包与测试报告交付。
-- [ ] 实现 Onboarding、权限引导与设置框架。
-- [ ] 实现 `HotkeyMonitor` 按下／松开事件。
-- [ ] 实现 `AudioRecorder`（16 kHz 单声道）及会话延迟采集。
-- [ ] 实现 `Transcriber` 端侧流式字幕、最终结果和 HUD。
+- [ ] 实现 Onboarding 页面（权限请求与菜单设置已完成，语气词选择页未做）。
+- [x] 实现 `HotkeyMonitor` 按下／松开事件。
+- [x] 实现 `AudioRecorder`（16 kHz 单声道）及会话延迟采集。
+- [x] 实现 `Transcriber` 端侧流式字幕、最终结果和 HUD。
 - [ ] 实现 `TextProcessor` 本地规则与可选文本润色、环境变量／Keychain 密钥读取及超时降级。
-- [ ] 实现 `TextInserter`：AX → 剪贴板粘贴 → 复制并提示。
+- [x] 实现 `TextInserter`：AX → 剪贴板粘贴 → 复制并提示。
+- [ ] 用户在备忘录完成实机听写验收，并记录首批真实延迟。
 - [ ] 完成设置／历史、端到端验证及实测延迟记录。
