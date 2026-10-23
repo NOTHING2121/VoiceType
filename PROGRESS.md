@@ -83,11 +83,22 @@ ZDR 改为默认关闭的尽力偏好，不再是润色前提或无端点时硬�
 
 语音会话及实测延迟：无。此步只验证纯逻辑；系统 fake、协调器及额外端到端场景留在下一步独立提交。
 
+## 步骤 4：假系统协调器与完整回归（2026-10-23）
+
+接入串行 SessionCoordinator、VirtualScheduler、FakeHotkeyMonitor、FakeAudioRecorder、FakeTranscriber、FakeTextProcessor、FakeTextInserter、FakeHUD 和 InMemoryMetrics。启动／处理／准备／写入 effect 执行前再次校验当前会话与操作令牌；写入授权与 fake 写入入口之间无异步间隔。剪贴板仅用内存模型，保存全部 items/types，500ms 版本匹配恢复；恢复任务独立于会话计时器，支持空内容、外部改写、新会话、重叠 paste、copy-only 和恢复失败。
+
+首轮139个回归场景＋1个冒烟用例发现1个真实失败：组合清洗非幂等，已修复。独立只读审查另外发现并修复：尚未提交的润色结果遇到隐私开启应回本地；分段乱序不能用最大 audioEnd 丢掉前段；fake 轮换应结束旧任务且用独立后续脚本；fake copy 成功写入不能回报确定失败。新增14个针对性回归；旧分段在500ms窗口内可等待，完整 final 按任务替换子片段、partial 按任务覆盖，而不是重复追加。
+
+最终实际运行：176个参数化场景＋1个冒烟用例全部通过；Swift Testing 汇总为7个测试入口、1个 suite、0失败，xUnit按入口计数为7而非177。分组：状态机59、处理／插入36、端到端／剪贴板29、文本15、不变量23、独立审查14。包含两组各1000事件的确定性状态转换序列检查。开启覆盖率并导出真实 llvm-cov 报告：reducer 行覆盖98.08%，核心目录行覆盖97.25%，不是100%或形式证明。
+
+每个 fake 会话都会记录内存指标。导出8个明确标注 simulated=true 的示例：AX 停止到验证47ms、paste 69ms、copy-only停止到复制47ms、模型成功147ms、模型超时697ms、partial降级517ms；首字70ms来自预设80ms字幕／10ms声音脚本。以上不是实机性能，也不证明实际Apple识别／OpenRouter／目标应用达标。测试另明确复现超过500ms慢消费可能读到旧剪贴板，这是已知风险，不当作成功插入。未打开真实麦克风、调用网络、读Keychain或修改系统剪贴板。
+
 ## 后续里程碑
 
 - [x] 用户授权按 `design.md` 开始菜单栏骨架与假模块测试阶段。
 - [x] 创建 Swift 5.9、macOS 13+ 菜单栏应用工程，配置 `LSUIElement`。
 - [x] 实现纯逻辑 `SessionStateMachine` 及单元测试。
+- [x] 实现系统模块协议、假实现、虚拟调度和端到端回归。
 - [ ] 实现 Onboarding、权限引导与设置框架。
 - [ ] 实现 `HotkeyMonitor` 按下／松开事件。
 - [ ] 实现 `AudioRecorder`（16 kHz 单声道）及会话延迟采集。
