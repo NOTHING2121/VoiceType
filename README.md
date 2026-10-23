@@ -4,7 +4,7 @@ macOS 菜单栏语音输入应用：在任意应用按全局快捷键说话，�
 
 ## 当前状态
 
-仓库已初始化，[design.md](design.md) 已编写，等待用户确认后才实现。尚未创建 Swift / Xcode 工程，没有实测语音延迟。最新开发约定以用户提供的 [agent.md](agent.md) 为准，开发记录见 [PROGRESS.md](PROGRESS.md)。
+仓库已初始化，[design.md](design.md) 已编写，等待用户确认后才实现。尚未创建 Swift / Xcode 工程，没有实测语音延迟。基础约定见用户提供的 [agent.md](agent.md)，后续用户修订以最新 design.md 为准；开发记录见 [PROGRESS.md](PROGRESS.md)。
 
 ## 技术栈与主链路
 
@@ -12,15 +12,15 @@ Swift 5.9，SwiftUI + AppKit，macOS 13+。应用设置 `LSUIElement`，不显�
 
 按键 → AVAudioEngine 录音 → Apple Speech 流式识别（带标点）→ 本地规则清洗 → 可选 OpenRouter 文本润色（超时跳过）→ 插入。
 
-主链路强制端侧识别，语言和设备能力须运行时检查；不支持时明确提示，不静默上传音频。OpenRouter 默认关闭，仅作为文本增强，不负责语音识别。其 OpenAI 兼容接口 base URL 为 `https://openrouter.ai/api/v1`；API key 只从 `OPENROUTER_API_KEY` 或 Keychain 读取，不写入代码、日志或 Git。
+优先端侧识别；不支持时在 Onboarding／设置说明音频将发往 Apple，用户明确同意且隐私模式关闭后才允许 Apple 服务器识别。隐私模式强制端侧并跳过云润色；开关默认关闭，但服务器同意初始未取得，不会未经允许上传音频。OpenRouter 默认关闭，只做文本增强，其“优先 ZDR”偏好默认关闭，不是润色的硬性前提。base URL 为 `https://openrouter.ai/api/v1`；key 只读 `OPENROUTER_API_KEY` 或 Keychain，不写入代码、日志或 Git。
 
 ## 模块边界
 
 - `HotkeyMonitor`：全局右 Option 按下／松开、Esc 与组合键事件。
 - `AudioRecorder`：AVAudioEngine 采集、16kHz 单声道转换和本地声音检测。
-- `Transcriber`：SFSpeechRecognizer 实时字幕与最终识别，共享一个识别来源。
-- `TextProcessor`：确定性的本地清洗，加可关闭／超时跳过的模型润色。
-- `TextInserter`：默认安全，只有 `AXSecureTextField` subrole 或 `IsSecureEventInputEnabled() == true` 才安全阻断；AX → 未执行／确定未写入时粘贴 → 复制并提示，写入结果未知不得自动重发。粘贴后等 500ms，仅剪贴板 `changeCount` 仍匹配本次写入版本时恢复原内容，否则不动。
+- `Transcriber`：SFSpeechRecognizer 字幕与最终识别，端侧优先，仅经事先同意允许服务器路径。
+- `TextProcessor`：本地清洗加可关闭／超时跳过的模型润色；隐私模式不调用云模型，ZDR 仅作可选偏好。
+- `TextInserter`：默认安全，仅 `AXSecureTextField` 或安全输入为 true 时阻断。正常链为 AX → 未执行／确定未写入时粘贴 → 复制；应用切换则直接复制，HUD 显示“已复制，按 command+v粘贴”，不强行切回应用或发送 Cmd+V。写入结果未知不重发；自动粘贴后 500ms 仅版本匹配时恢复，copy-only 不恢复。
 - `SessionStateMachine`：唯一状态源，纯 Swift reducer，可用虚拟时间单测。
 - HUD、Onboarding、设置／历史：反馈、授权、配置与留存控制。
 
