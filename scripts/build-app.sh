@@ -8,6 +8,7 @@ APP_BUNDLE="$ROOT_DIR/build/VoiceType.app"
 cd "$ROOT_DIR"
 # Keep compiler module-cache artifacts inside the ignored build directory.
 export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$ROOT_DIR/.build/clang-module-cache}"
+export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-$CLANG_MODULE_CACHE_PATH}"
 mkdir -p "$CLANG_MODULE_CACHE_PATH"
 # The package has no plugins or external dependencies; avoid the deprecated macOS sandbox-exec path.
 swift build --disable-sandbox -c release --jobs 2 --product VoiceType

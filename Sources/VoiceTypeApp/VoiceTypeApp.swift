@@ -7,7 +7,7 @@ struct VoiceTypeApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            Button("Quit VoiceType") {
+            Button("退出 VoiceType") {
                 NSApplication.shared.terminate(nil)
             }
         } label: {

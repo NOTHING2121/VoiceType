@@ -93,12 +93,21 @@ ZDR 改为默认关闭的尽力偏好，不再是润色前提或无端点时硬�
 
 每个 fake 会话都会记录内存指标。导出8个明确标注 simulated=true 的示例：AX 停止到验证47ms、paste 69ms、copy-only停止到复制47ms、模型成功147ms、模型超时697ms、partial降级517ms；首字70ms来自预设80ms字幕／10ms声音脚本。以上不是实机性能，也不证明实际Apple识别／OpenRouter／目标应用达标。测试另明确复现超过500ms慢消费可能读到旧剪贴板，这是已知风险，不当作成功插入。未打开真实麦克风、调用网络、读Keychain或修改系统剪贴板。
 
+## 步骤 5：最终打包、验证与结果交付（2026-10-23）
+
+菜单栏入口仅 waveform 图标与中文“退出 VoiceType”，AppKit accessory＋LSUIElement；不接入任何fake或真实语音流程。打包脚本补上Swift manifest局部缓存，并确保两个脚本可执行。重新从最终源码Release构建，通过plist与ad-hoc签名验证；Mach-O arm64最低系统13.0，动态依赖只有系统库，无Testing、私有rpath或构建目录依赖。未启动App GUI，也未做鼠标菜单或macOS13实机验收。
+
+最终源码再次执行带覆盖率全套测试，7入口／177场景／0失败；覆盖率和xUnit重新导出。更新README构建／测试命令、design实现状态和文档校验器，文档一致性、bash语法与Git差异检查通过。用户agent.md散列仍为初始化读取值，保持原样且未纳入提交。
+
+本机交付目录 `../outputs/voicetype/`：`VoiceType.app`、`VoiceType-app.zip`、`VoiceType-test-results.zip`。可直接阅读 [完整测试报告](../outputs/voicetype/test-results/test-report.md)；测试归档包括实际原始输出、原生7入口xUnit、176场景名称清单、真实覆盖率与8条虚拟会话指标。两份zip解包校验通过；交付App再次验证签名。不发布、不安装、不替用户启动、不下载依赖；真实语音会话数量仍为0。
+
 ## 后续里程碑
 
 - [x] 用户授权按 `design.md` 开始菜单栏骨架与假模块测试阶段。
 - [x] 创建 Swift 5.9、macOS 13+ 菜单栏应用工程，配置 `LSUIElement`。
 - [x] 实现纯逻辑 `SessionStateMachine` 及单元测试。
 - [x] 实现系统模块协议、假实现、虚拟调度和端到端回归。
+- [x] 完成本阶段App打包与测试报告交付。
 - [ ] 实现 Onboarding、权限引导与设置框架。
 - [ ] 实现 `HotkeyMonitor` 按下／松开事件。
 - [ ] 实现 `AudioRecorder`（16 kHz 单声道）及会话延迟采集。
