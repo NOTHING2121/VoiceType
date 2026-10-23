@@ -53,7 +53,7 @@ private func sine(frames: AVAudioFrameCount, rate: Double, channels: AVAudioChan
 }
 
 enum SystemAdapterCases {
-    static let all: [SystemCase] = clipboard + audio + other
+    static let all: [SystemCase] = clipboard + audio + other + HotkeyTapCases.all
 
     static let clipboard: [SystemCase] = [
         SystemCase("多item多类型快照可完整恢复") {
@@ -194,6 +194,7 @@ import Testing
 @Suite("VoiceType system adapters", .serialized)
 struct VoiceTypeSystemTests {
     @Test("真实系统适配器", arguments: SystemAdapterCases.all)
+    @MainActor
     func adapters(_ scenario: SystemCase) throws { try scenario.body() }
 }
 #elseif canImport(XCTest)

@@ -13,8 +13,11 @@ public final class SessionCoordinator {
     public var autoRunEffects = true
     /// Observes the machine after each event (HUD lifetime, reset, safety polling). Must not mutate synchronously.
     public var onAfterSend: ((SessionStateMachine) -> Void)?
+    /// Optional live facts immediately before an external write; tests inject deterministic snapshots.
+    public var insertionPreflight: (() -> SessionEnvironment)?
     private var queue: [SessionEffect] = []
     private var draining = false
+    private var deferredPresentation = false
     public private(set) var visitedStates: [SessionState] = [.idle]
     public var queuedEffectCount: Int { queue.count }
     public init(machine: SessionStateMachine = .init(), scheduler: SessionScheduling, audio: AudioRecording, transcriber: Transcribing, processor: TextProcessing, inserter: TextInserting, hud: HUDPresenting = FakeHUD(), metrics: MetricsRecording = InMemoryMetrics()) {
@@ -22,10 +25,24 @@ public final class SessionCoordinator {
         self.processor = processor; self.inserter = inserter; self.hud = hud; self.metrics = metrics
     }
     public func connect(_ hotkeys: HotkeyMonitoring) { hotkeys.onEvent = { [weak self] in self?.send($0) } }
-    public func send(_ event: SessionEvent) {
+    public func send(_ event: SessionEvent, deferringSideEffects: Bool = false) {
         let before = machine.state
         queue += machine.send(event, at: scheduler.now)
         if before != machine.state { visitedStates.append(machine.state) }
+        // Event-tap decisions must see cancellation immediately, but never run audio/UI/disk work
+        // before returning the key to the system. The scheduler keeps this on the same serial queue.
+        if deferringSideEffects {
+            if !deferredPresentation {
+                deferredPresentation = true
+                scheduler.schedule(at: scheduler.now, scope: .module) { [weak self] in
+                    guard let self = self else { return }
+                    self.deferredPresentation = false
+                    self.presentAndRunEffects()
+                }
+            }
+        } else { presentAndRunEffects() }
+    }
+    private func presentAndRunEffects() {
         hud.update(state: machine.state, message: machine.hudMessage, caption: machine.liveCaption)
         if autoRunEffects { runEffects() }
         onAfterSend?(machine)
@@ -68,6 +85,8 @@ public final class SessionCoordinator {
             if machine.state == .inserting, machine.isCurrent(token) { inserter.prepare(token, strategy: strategy, text: text, callback: callback) }
         case .writeInsertion(let token, let strategy, let text):
             guard machine.state == .inserting, machine.isCurrent(token), machine.context?.prepared == true, machine.context?.writeCommitted == false else { return }
+            if let preflight = insertionPreflight { send(.environmentChanged(preflight())) }
+            guard machine.state == .inserting, machine.isCurrent(token), machine.context?.writeCommitted == false else { return }
             // No async gap between reducer authorization and the external write's entry point.
             send(.commitWrite(token))
             if machine.state == .inserting, machine.isCurrent(token), machine.context?.writeCommitted == true {

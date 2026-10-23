@@ -73,8 +73,9 @@ final class AppModel: ObservableObject {
         let trusted = AXIsProcessTrusted()
         accessibility = trusted ? .granted : .denied
         if let session = session {
-            if trusted, !session.hotkeys.installedWhileTrusted { session.hotkeys.install() }
-            if !trusted, session.hotkeys.installedWhileTrusted { session.hotkeys.uninstall() }
+            HotkeyConnectionPolicy.refresh(trusted: trusted, installed: session.hotkeys.installedWhileTrusted,
+                                           automatically: session.hotkeys.reconnectAutomatically,
+                                           install: session.hotkeys.install, uninstall: session.hotkeys.uninstall)
         }
         updateHotkeyStatus()
         onDeviceSupported = session?.transcriber.recognizer?.supportsOnDeviceRecognition ?? true
@@ -82,7 +83,9 @@ final class AppModel: ObservableObject {
 
     func restartHotkeys() {
         guard sessionState == .idle else { return }
-        session?.hotkeys.install()
+        if let session = session {
+            HotkeyConnectionPolicy.restart(isIdle: session.state == .idle, install: session.hotkeys.install)
+        }
         refresh()
     }
 
@@ -90,6 +93,7 @@ final class AppModel: ObservableObject {
         rightOptionPressCount = session?.hotkeys.rightOptionPressCount ?? 0
         if !AXIsProcessTrusted() { hotkeyStatus = "快捷键监听：请授权辅助功能" }
         else if SafetyProbe.secureEventInputEnabled { hotkeyStatus = "快捷键暂停：请先离开密码框或安全输入" }
+        else if session?.hotkeys.reconnectAutomatically == false { hotkeyStatus = "快捷键已停用，请重新连接" }
         else if session?.hotkeys.installedWhileTrusted == true { hotkeyStatus = "快捷键监听：已启动" }
         else { hotkeyStatus = "快捷键监听失败，请重新连接" }
         // Diagnostics contain only readiness/counters, never ordinary keys or dictated text.

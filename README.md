@@ -1,48 +1,108 @@
 # VoiceType
 
-macOS 菜单栏语音输入。按住右 Option 说话，HUD 显示实时字幕，松开后经本地规则清洗插入当前焦点输入框。当前阶段已接入**真实主链路**：全局右 Option／Esc 监听 → AVAudioEngine 录音 → Apple Speech 端侧流式识别（带标点）→ 本地清洗 → AX 插入 → 剪贴板粘贴 → 复制提示。OpenRouter 润色仍未接入（默认关闭，开启也会安全降级到本地文本）。
+macOS 菜单栏语音输入：**按住右 Option 说话，松开即插入；快速单击开始免提，再单击结束。**录音时屏幕底部显示实时字幕，HUD 不抢焦点。使用 Apple Speech（带标点）、本地格式清洗，优先在设备内识别。
 
-## 当前状态
+用户已在备忘录实测通过按住说和免提。OpenRouter 仅为后续可选文本润色，目前未接入，不需要 API Key。当前版本没有 Dock 图标，也没有正文历史或录音文件。
 
-菜单栏 App（`LSUIElement=true`，无 Dock 图标）启动后依次请求麦克风、语音识别权限，并提示打开辅助功能；菜单显示三项权限状态、识别语言、隐私模式（仅端侧）、Apple 服务器识别同意（仅当前语言不支持端侧时出现，开启前弹出说明）、活动时的“取消当前听写”、打开延迟记录和退出。
+## 1. 构建和启动
 
-HUD 是不激活 App 的 `NSPanel`：`canBecomeKey`／`canBecomeMain` 恒为 false、`.nonactivatingPanel`、忽略鼠标、`orderFrontRegardless`。`--hud-selftest` 自检已实测：显示期间前台应用、VoiceType 激活状态和 key window 都不变。
+需要 macOS、Swift Command Line Tools 或 Xcode。工程要求 Swift 5.9+，部署目标 macOS 13+；当前产物为 Apple Silicon arm64，已在本机 macOS 27.0.1／Swift 6.4 测试，尚未做 macOS 13 或 Intel 实机验收。
 
-单测：核心 203 个场景（含 27 个真实链路纯逻辑）、系统适配层 13 个（私有 NSPasteboard 真实快照／恢复、AVAudioConverter、声音检测、指标脱敏）、1 个冒烟用例全部通过。**真实麦克风、Speech、AX 和备忘录插入需要你在本机授权后亲自验收**，自动化测试没有替你点授权或开麦。细节见 [PROGRESS.md](PROGRESS.md)，设计见 [design.md](design.md)，原始约定 [agent.md](agent.md) 保持原样。
-
-## 构建、测试和试用
+在终端进入 **VoiceType 仓库根目录**，运行：
 
 ```bash
-cd "VoiceType"
-./scripts/test.sh
-./scripts/build-app.sh                      # 生成并签名 build/VoiceType.app
-build/VoiceType.app/Contents/MacOS/VoiceType --hud-selftest /tmp/hud.json   # 可选：HUD 焦点自检
+./scripts/build-app.sh
 open build/VoiceType.app
 ```
 
-首次运行：允许麦克风与语音识别；在“系统设置 › 隐私与安全性 › 辅助功能”打开 VoiceType（全局按键监听和 AX 插入／发送 Cmd+V 都需要）。然后在备忘录里点进一条笔记，按住右 Option 说话、松开即插入；快速单击右 Option 进入免提，再单击结束；Esc 取消。每次会话的延迟写入 `~/Library/Application Support/VoiceType/metrics.jsonl`（只含时间与路径，不含正文）。
+产物是 `build/VoiceType.app`；也可以在 Finder 里双击它。菜单栏会出现波形图标，点击可查看权限、监听状态、识别语言、隐私设置和退出项。
 
-无签名证书时，`build-app.sh` 使用 ad-hoc 签名并把指定要求设为 `identifier "com.voicetype.app"`，让重建后系统权限尽量保留（仅限本地开发）。有开发证书可设 `CODESIGN_IDENTITY`。本机环境为 Swift 6.4 / macOS 27.0.1 / 仅 Command Line Tools，测试用 Swift Testing；源代码保留 XCTest 入口与 Swift 5 语言模式，部署目标 macOS 13，尚未在 macOS 13 实机验证。
+**正常使用请用 Finder 或 `open` 启动，不要直接执行 `Contents/MacOS/VoiceType`。**直接从终端启动可能改变 macOS 对权限归属的判断。不需要 `sudo`，不要同时运行不同目录里的多份 VoiceType。升级或重新构建后，先从菜单退出旧版本，再打开新版本；不要在录音中重新构建。
 
-## 右 Option 没反应时
+## 2. 首次授权
 
-点开菜单确认三项权限已授权，并查看“快捷键监听”状态。若显示安全输入暂停，离开密码框后重试；若监听失败，点击“重新连接快捷键”。关闭菜单，在普通输入框按右 Option，再查看“已收到右 Option”的次数和“最近提示”。次数增加说明按键已进入应用；最近提示保留启动录音／识别失败的原因。
+首次启动依次请求以下权限。三项都必需，拒绝或缺少任一项时不会打开麦克风：
 
-`~/Library/Application Support/VoiceType/diagnostics.json` 保存当前应用路径、权限、监听状态、右 Option 次数和最近错误，不记录普通按键或听写正文。设备左右标记缺失时，监听器读取右 Option 的物理键状态；重新连接会清空旧按键状态。全局与本地监听都安装成功后才显示监听已启动。
+| 权限 | 用途 | 系统设置位置 |
+| --- | --- | --- |
+| 麦克风 | 只在听写会话期间录音 | 隐私与安全性 → 麦克风 |
+| 语音识别 | Apple Speech 流式字幕和最终识别 | 隐私与安全性 → 语音识别 |
+| 辅助功能 | 全局右 Option、活动会话 Esc 过滤、AX 插入和模拟 Cmd+V | 隐私与安全性 → 辅助功能 |
 
-## 模块划分
+在麦克风及语音识别弹窗中允许。辅助功能提示出现后打开系统设置，将 **VoiceType** 的开关打开；若列表没有，点「+」并选择 `build/VoiceType.app`。菜单里也可以点击未授权的权限直接打开对应设置页。
 
-| 模块 | 本阶段实现 |
+菜单会约每 1.5 秒重新检查权限。授权后确认三项都显示「已授权」，并显示「快捷键监听：已启动」；若尚未连接，点「重新连接快捷键」，必要时退出再打开 App。
+
+本项目已选定**辅助功能必需的方案 A**：这一个授权同时服务快捷键和插入，当前不额外请求「输入监控」。不提供缺少辅助功能仍可开始录音、仅复制结果的模式。授权中、启动 App、打开菜单和空闲等待时均不开麦；录音途中也不会请求系统权限。
+
+## 3. 在备忘录里听写一句话
+
+先在 VoiceType 菜单选择正确的识别语言，例如中文（中国），确认「当前语言：端侧识别」。然后打开备忘录，把光标点进笔记正文，关闭菜单再操作快捷键。
+
+| 操作 | 行为 |
 | --- | --- |
-| SessionStateMachine | 纯 reducer，唯一状态源；新增只读 HUD 文案／实时字幕、可配置插入看门狗（默认 180ms，真实链路 500ms） |
-| SessionCoordinator | 串行执行 effect；所有真实回调统一投递到主队列 |
-| HotkeyMonitor | `SystemHotkeyMonitor`：被动 NSEvent 全局／本地监听，`HotkeyInterpreter` 纯逻辑区分右 Option（设备位 0x40）、组合键、Esc；会话中按物理 Option 状态补发漏掉的松键 |
-| AudioRecorder | `SystemAudioRecorder`：AVAudioEngine 只在会话中开麦，转换为 16kHz 单声道；RMS 声音检测；设备配置变化即停止 |
-| Transcriber | `SpeechTranscriber`：`SFSpeechAudioBufferRecognitionRequest`，`addsPunctuation`、`requiresOnDeviceRecognition` 跟随策略，partial 驱动字幕，final 作结果 |
-| TextProcessor | `LocalTextProcessor` 复用已测本地规则；模型润色未接入 |
-| TextInserter | `SystemTextInserter`：AX `selectedText` 写入 + 有界写后验证 → 多类型剪贴板快照 + Cmd+V + 500ms 版本恢复 → 复制并提示；两个危险信号随时阻断 |
-| HUD／设置 | 不抢焦点 HUD 与菜单设置已实现；Onboarding 页面、历史仍未实现 |
+| 独立按住**右 Option ≥250ms** | 按住说，松开结束，识别完成后尝试插入当前焦点 |
+| 快速单击右 Option（<250ms） | 开始免提；这次松开不会结束，随后再单击结束 |
+| 免提中再次按住 ≥250ms | 转为按住说，在这次松开时结束 |
+| 活动听写时按 **Esc** | 取消本次；这个 Esc 的按下、长按重复及配对松开不会传给目标应用 |
+| 点菜单的「取消当前听写」 | 另一取消入口；HUD 本身保持点击穿透 |
+| 空闲时按 Esc | 正常交给当前应用，不影响它的退出、关闭弹窗等操作 |
 
-## 后续
+**右 Option 在键盘右侧，左 Option 不触发听写。**按着 Cmd／Ctrl／Shift／左 Option 时不启动；录音中按住右 Option 再组合普通键会取消，以保留正常 Option 快捷键。普通键和 Option 组合键不会被吞掉。
 
-OpenRouter 文本润色（base URL `https://openrouter.ai/api/v1`，密钥只从 `OPENROUTER_API_KEY` 或 Keychain 读取，不进代码与提交）、Onboarding 页面（含语气词清理选择）、历史、指标 7 天清理、分段边界重叠去重、多应用兼容矩阵与实测延迟仍待完成。
+HUD 显示「正在聆听 · 端侧识别」及实时字幕，松开后显示识别／插入状态。按住 250–299ms 且未检测到声音或文字的短会话会丢弃；单击启动免提后不会因为暂时安静立即取消。最长录音 5 分钟后自动结束。HUD 计时和临近上限提醒还未实现。
+
+Esc 对**尚未发生的外部写入**可以取消；已发出的 AX／粘贴不能可靠撤回，不会自动 Cmd+Z。若 HUD 已显示「已插入」，需要你在目标应用自行撤销。
+
+## 4. 文字和剪贴板如何交付
+
+优先通过辅助功能接口在当前选区／光标处插入（AX），不替换整篇文档。确认不能写入或确定未写入时，才用剪贴板发一次 Cmd+V。粘贴前保存原有 items／类型，**发送后等 500ms，剪贴板版本仍是 VoiceType 写入的那份才恢复原内容**；你期间复制了别的内容就完全不动它。AX 成功不需要改剪贴板。
+
+如果录音期间切换过应用（即使切回），或者只能复制，HUD 提示 **「已复制，按 command+v粘贴」**，由你手动粘贴。这种复制结果会留在剪贴板，**不设 500ms 恢复**。听写时同一应用内移动光标／换输入框，文字会尝试插入完成时的当前焦点。
+
+提示「可能已经插入，请检查」表示结果不能确认；为避免重复文字，不会自动再粘贴或复制，请先检查目标。
+
+检测到 AX 密码框标记或系统安全输入时，不录音／停止当前会话，且不自动插入、粘贴或复制。没有这些危险信号但目标缺少 AX 文本属性时，仍允许粘贴降级。自绘且没有暴露危险信号的第三方密码控件不能保证被识别，请勿在这类控件中听写。
+
+## 5. 识别和隐私
+
+端侧优先。某语言不支持端侧时，必须从菜单阅读说明并明确允许「Apple 服务器识别」才可使用；系统的语音识别授权**不是**上传音频的产品同意。开启「隐私模式（仅端侧识别）」时强制本地，该语言不支持就不能录音。服务器同意默认未取得，隐私模式默认关闭；关闭隐私模式不会自动取得服务器同意。
+
+当前只做基础格式清洗，不默认删除「嗯」「那个」等语气词或句首口头语；这两个选择的 Onboarding 页面还未做，因此默认保留。OpenRouter 润色、Keychain 配置及正文历史均未接入，不会向 OpenRouter 发音频或文本。没有录音文件，也不持久化听写正文。
+
+## 6. 常见问题
+
+| 现象 | 处理 |
+| --- | --- |
+| 右 Option 没反应 | 看三项权限及监听状态；点「重新连接快捷键」后关闭菜单再试，仍无响应就退出重开。检查外接键盘／改键工具是否改变右 Option |
+| 显示监听失败或停用 | 确认辅助功能已授权，在空闲时重新连接。系统停掉 Esc 过滤器会先取消听写；超时可自动重连，系统主动停用则需手动点击 |
+| 「密码框或安全输入已开启，未插入」 | 离开密码框；检查终端的安全键盘输入或其他启用安全输入的应用 |
+| 缺少权限 | 点击菜单中未授权的权限进入系统设置，不要试图绕过权限 |
+| 识别暂不可用／没有语音 | 检查麦克风和语言；等待端侧识别资源可用后重试，不会静默切到服务器 |
+| 「已复制…」但没插入 | 属于手动粘贴路径，按 Command+V；不要误认为插入成功 |
+| 首字稍慢 | 首批实测约 528–675ms；<500ms 是目标，不是当前保证 |
+| 大剪贴板导致卡顿 | 快照可能同步读取较大的多类型内容；很慢的应用也可能在 500ms 恢复后才消费剪贴板，这是已知限制 |
+
+重新编译后权限通常可保留。如果权限显示与行为不一致，先退出 App、在辅助功能页关闭再开启 VoiceType，然后重新启动。**只有仍异常时**才考虑移除旧权限条目、重新添加当前 App。不要一上来重置全部权限。
+
+## 7. 延迟记录与开发验证
+
+菜单「打开延迟记录」打开 `~/Library/Application Support/VoiceType/`，其中：
+
+| 文件 | 内容 |
+| --- | --- |
+| `metrics.jsonl` | 每个真实会话一行：识别／交付路径、停止原因、时间与延迟，不含正文 |
+| `diagnostics.json` | App 路径、权限、监听状态、右 Option 次数、最近错误，不记录普通按键或正文 |
+
+测试归档的 `virtual-metrics.json` 标有 `simulated: true`，是虚拟时钟数据，不是上面的真实指标。首批 3 次中文端侧／AX 听写：停止到插入 **135、127、104ms**；声音起点到首字 **644、528、675ms**。只有 3 个样本，不宣称稳定 p95 达标。
+
+```bash
+./scripts/test.sh                         # 完整回归
+bash -n scripts/build-app.sh scripts/test.sh
+# 可选：HUD 焦点自检。此模式不安装快捷键监听、不打开麦克风；正常使用仍用 Finder/open。
+build/VoiceType.app/Contents/MacOS/VoiceType --hud-selftest /tmp/voicetype-hud.json
+```
+
+本阶段测试覆盖状态机、虚拟端到端、私有剪贴板读写／500ms 恢复、音频转换，以及构造但不投递的 Esc CGEvent。不会替你点系统授权，不会发全局测试按键或占用真实麦克风。新 Esc 过滤的实际目标应用效果仍需更新 App 后手动确认。当前 CLT 自带 Swift Testing；完整 Xcode／Swift 5.9 保留 XCTest 入口。测试运行库最低版本与产品部署目标不同，详见 [PROGRESS.md](PROGRESS.md)。
+
+无开发证书时使用基于 bundle ID 的 ad-hoc 指定要求，供**本地开发**且尽力保留重建后的权限，并非正式安全分发方案。有证书可设 `CODESIGN_IDENTITY`；本项目尚未公证或发布安装器。实现边界和后续路线见 [design.md](design.md)，原始约定 [agent.md](agent.md) 保持不改。

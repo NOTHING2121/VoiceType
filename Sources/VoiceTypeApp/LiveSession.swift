@@ -35,6 +35,12 @@ final class LiveSession {
         metrics.locale = { speech.localeIdentifier }
         clipboard.onRestore = { [metrics] result in metrics.recordClipboard(result) }
         inserter.safetyHandler = { [weak self] signals in self?.coordinator.send(.safetyChanged(signals)) }
+        coordinator.insertionPreflight = { [probe, hotkeys] in
+            var environment = probe.current(recognizer: speech.recognizer)
+            environment.hotkeyPermission = hotkeys.installedWhileTrusted
+            return environment
+        }
+        hotkeys.isSessionActive = { [weak self] in self?.coordinator.machine.isActive ?? false }
         hotkeys.onEvent = { [weak self] event in self?.handle(event) }
         coordinator.onAfterSend = { [weak self] machine in self?.afterSend(machine) }
         observeSystem()
@@ -47,9 +53,17 @@ final class LiveSession {
     func send(_ event: SessionEvent) { coordinator.send(event) }
 
     private func handle(_ event: SessionEvent) {
+        switch event {
+        case .escape, .interrupted(.listenerLost):
+            coordinator.send(event, deferringSideEffects: true)
+            return
+        default: break
+        }
         if case .rightOptionDown = event, coordinator.machine.state == .idle {
             // Fresh permissions, on-device capability, foreground PID and the two danger signals at key down.
-            coordinator.send(.environmentChanged(probe.current(recognizer: transcriber.recognizer)))
+            var environment = probe.current(recognizer: transcriber.recognizer)
+            environment.hotkeyPermission = hotkeys.installedWhileTrusted
+            coordinator.send(.environmentChanged(environment))
         }
         coordinator.send(event)
     }
@@ -80,7 +94,7 @@ final class LiveSession {
         guard coordinator.machine.isActive else { stopGuard(); return }
         let signals = SafetyProbe.current(pid: NSWorkspace.shared.frontmostApplication?.processIdentifier)
         if signals.blocks { coordinator.send(.safetyChanged(signals)); return }
-        if !AXSupport.isTrusted { coordinator.send(.interrupted(.listenerLost)); return }
+        if !hotkeys.installedWhileTrusted { coordinator.send(.interrupted(.listenerLost)); return }
         if !SystemAudioRecorder.permissionGranted || !SpeechTranscriber.permissionGranted {
             coordinator.send(.interrupted(.permissionRevoked)); return
         }

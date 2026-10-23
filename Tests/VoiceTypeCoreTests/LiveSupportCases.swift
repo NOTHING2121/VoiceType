@@ -18,7 +18,7 @@ private let right = HotkeyInterpreter.rightOptionMask
 private let nonCoalesced: UInt64 = 0x100
 
 enum LiveSupportCases {
-    static let all: [RegressionCase] = hotkeys + verifier + locales + hud
+    static let all: [RegressionCase] = hotkeys + verifier + locales + hud + EscapeCases.all
 
     static let hotkeys: [RegressionCase] = [
         RegressionCase("右Option按下与松开只产生一对事件") {
