@@ -11,9 +11,14 @@ export CLANG_MODULE_CACHE_PATH="${CLANG_MODULE_CACHE_PATH:-$ROOT_DIR/.build/clan
 export SWIFTPM_MODULECACHE_OVERRIDE="${SWIFTPM_MODULECACHE_OVERRIDE:-$CLANG_MODULE_CACHE_PATH}"
 mkdir -p "$CLANG_MODULE_CACHE_PATH"
 # The package has no plugins or external dependencies; avoid the deprecated macOS sandbox-exec path.
-swift build --disable-sandbox -c release --jobs 2 --product VoiceType
+BUILD_OPTIONS=(--disable-sandbox -c release --jobs 2)
+# Optional for restricted build environments that cannot run dsymutil.
+if [[ -n "${VOICETYPE_DEBUG_INFO_FORMAT:-}" ]]; then
+    BUILD_OPTIONS+=(-debug-info-format "$VOICETYPE_DEBUG_INFO_FORMAT")
+fi
+swift build "${BUILD_OPTIONS[@]}" --product VoiceType
 
-BIN_DIR="$(swift build --disable-sandbox -c release --show-bin-path)"
+BIN_DIR="$(swift build "${BUILD_OPTIONS[@]}" --show-bin-path)"
 EXECUTABLE="$BIN_DIR/VoiceType"
 
 if [[ ! -f "$EXECUTABLE" ]]; then

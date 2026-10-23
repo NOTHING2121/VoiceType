@@ -22,7 +22,7 @@ struct MenuContent: View {
 
     private var stateText: String {
         switch model.sessionState {
-        case .idle: return "就绪：按住右 Option 说话，松开插入"
+        case .idle: return model.readinessIssue ?? "就绪：按住右 Option 说话，松开插入"
         case .recording: return "正在聆听…"
         case .finalizing, .processing, .inserting: return "正在处理…"
         case .done: return "已完成"
@@ -33,6 +33,7 @@ struct MenuContent: View {
 
     var body: some View {
         Text(stateText)
+        Button("使用引导与试用…") { model.showOnboarding() }.disabled(model.isBusy)
         if [.recording, .finalizing, .processing, .inserting].contains(model.sessionState) {
             Button("取消当前听写") { model.session?.send(.escape) }
         }
@@ -58,6 +59,10 @@ struct MenuContent: View {
             Toggle("允许 Apple 服务器识别…", isOn: Binding(get: { model.serverConsent }, set: { model.setServerConsent($0) }))
         }
         Divider()
+        Menu("文字清理（可选）") {
+            Toggle("删除孤立语气词", isOn: Binding(get: { model.cleanup.preferences.isolatedFillers == .remove }, set: { model.setCleanup(fillers: true, enabled: $0) }))
+            Toggle("清理句首口头语", isOn: Binding(get: { model.cleanup.preferences.sentencePrefixes == .remove }, set: { model.setCleanup(fillers: false, enabled: $0) }))
+        }
         Button("打开延迟记录") { model.openMetrics() }
         Divider()
         Button("退出 VoiceType") { NSApplication.shared.terminate(nil) }
@@ -67,7 +72,7 @@ struct MenuContent: View {
         if state == .granted {
             Text("\(title)：已授权")
         } else {
-            Button("\(title)：\(state.rawValue)，打开系统设置…") { model.openSettings(anchor) }
+            Button("\(title)：\(state.rawValue)，打开系统设置…") { model.openSettings(anchor) }.disabled(model.isBusy)
         }
     }
 }

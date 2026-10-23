@@ -15,6 +15,8 @@ final class LiveSession {
     let hotkeys = SystemHotkeyMonitor()
     let probe = SystemEnvironmentProbe()
     private(set) var coordinator: SessionCoordinator!
+    var interceptHotkey: ((SessionEvent) -> Bool)?
+    var onMachineChange: ((SessionStateMachine) -> Void)?
     var onStateChange: ((SessionState) -> Void)?
     private var guardTimer: Timer?
     private var resetScheduled = false
@@ -53,6 +55,7 @@ final class LiveSession {
     func send(_ event: SessionEvent) { coordinator.send(event) }
 
     private func handle(_ event: SessionEvent) {
+        if interceptHotkey?(event) == true { return }
         switch event {
         case .escape, .interrupted(.listenerLost):
             coordinator.send(event, deferringSideEffects: true)
@@ -77,6 +80,7 @@ final class LiveSession {
             }
         }
         if machine.isActive { startGuard() } else { stopGuard() }
+        onMachineChange?(machine)
         onStateChange?(machine.state)
     }
 

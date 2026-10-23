@@ -113,7 +113,7 @@ HUD 为 `.nonactivatingPanel` 的 NSPanel 子类，`canBecomeKey/Main` 恒 false
 - [x] 实现纯逻辑 `SessionStateMachine` 及单元测试。
 - [x] 实现系统模块协议、假实现、虚拟调度和端到端回归。
 - [x] 完成本阶段App打包与测试报告交付。
-- [ ] 实现 Onboarding 页面（权限请求与菜单设置已完成，语气词选择页未做）。
+- [x] 实现六步 Onboarding、实际听写验证和两项独立清理选择页（见本轮验收记录）。
 - [x] 实现 `HotkeyMonitor` 按下／松开事件。
 - [x] 实现 `AudioRecorder`（16 kHz 单声道）及会话延迟采集。
 - [x] 实现 `Transcriber` 端侧流式字幕、最终结果和 HUD。
@@ -158,3 +158,17 @@ Tap 取消与失联事件同步改变 reducer，HUD、音频清理、指标和�
 首字目标 <500ms 尚未达标；停止到插入 <1.5s 在这三次都达标，但仅 3 个样本，不计算稳定 p95，不代表服务器路径、剪贴板自动粘贴或本轮新 tap 的实机表现。本轮未修改原始用户日志，也未增加正文留存。
 
 README 已改成使用者可照做的说明：构建／Finder 或 open 启动、三项必需授权、两种手势、活动及空闲 Esc、AX／500ms 剪贴板恢复／手动复制的区别、隐私模式、监听重连和排障。文档一致性校验通过；`../outputs/voicetype/VoiceType.app` 与 `VoiceType-app.zip` 同步到本轮 Release，签名、ZIP 压缩完整性和二进制一致性均验证。旧 App／ZIP 备份在 `.work/voicetype-esc/`；之前的 `VoiceType-test-results.zip` 仍是旧阶段归档，本轮真实测试日志位于上述工作目录。用户 `agent.md` 保持原始散列且不纳入提交，未改动其他项目。
+
+## 六步首次使用引导、README 重写与实机验收（2026-10-23）
+
+新增 OnboardingModel／OnboardingWindowController／SwiftUI 六步页面：欢迎、授权与语言、右 Option 验证、真实听写练习、文字偏好、完成。首次未完成自动展示；菜单可重开；关闭或稍后设置不保存完成，关闭时取消未提交会话并清空练习正文。完成标记只在真实成功试用后由用户点击完成时保存。权限由用户逐项点击申请，未授权时给系统设置路径；返回后自动检查；权限、监听、设备、语言及端侧策略共同决定就绪，修复 idle 无条件显示“就绪”的误导。
+
+快捷键保持固定右 Option；验证页检查合法按下／松开但拦截录音开始。练习页使用真实 NSTextView、原有 LiveSession 和 SystemTextInserter，按住与免提均支持；通过当前 session、真实终态、已验证 AX／paste、原选区替换后的内容以及未切换应用共同判断成功。手工输入、复制、失焦、失败、取消或旧回调不通过。两项清理独立默认关闭，展示前后示例和语义风险；选择经 CleanupSelection 编码持久化，菜单可撤回，按下一会话快照应用。Apple 服务器同意仍独立确认，并补存说明版本。
+
+实机发现并修复一次完成检测错误：reducer 进入终态会清空 deliveryText，最初 UI 读取该字段导致“文字已输入但继续按钮不可用”。改为读取终态短时 recoveryText；新增真实 fake 协调器走完整终态的回归，防止只测试独立布尔门禁遗漏此问题。该文本仅用于内存核对，不写日志或偏好。
+
+验证：纯核心 236 个参数化场景（含新增 10 个引导场景）及 1 个冒烟测试全部通过，Swift Testing 9 入口／0 失败。新增覆盖合法快捷键配对、组合键取消、焦点、失败／copy-only／旧回调、重复终态、UTF-16 选区和终态文本清理。系统适配器本轮未改动；没有将受限环境下不可访问的剪贴板测试说成通过。Release 使用 VOICETYPE_DEBUG_INFO_FORMAT=none 构建成功；签名严格验证、脚本语法、diff 空白检查、UTF-8 文档和 zip 完整性通过。原始日志位于 .work/onboarding/。
+
+真实 UI 已检查欢迎、权限、快捷键和练习页的布局／按钮状态；用户亲自完成右 Option 验证和中文听写，报告修复后已进入文字偏好页，并随后完成了引导。最终实机记录：端侧 zh-CN、final、insertedAX、done，松键到插入 106ms，声音起点到首字 428ms（单次样本）。读取持久化偏好确认 onboardingCompleted.v1=true，用户对两项清理的明确选择均已保存。未重置已有系统授权，未伪造语音或写入成功标记。全新拒绝授权、服务器识别及全部第三方输入框兼容性仍需专门实机矩阵验证。
+
+README.md 已按真实首次体验重写；原 README_VT.md 的用户内容先备份到 .work/onboarding/README_VT-before.md，再保留为标准 README 入口。design.md 更新已实现边界和完成条件。build/VoiceType.app、旁目录 outputs/voicetype/VoiceType.app、VoiceType-app.zip 与交付 README 同步；旧 zip 保留于 .work/onboarding/VoiceType-app-before.zip。自定义快捷键、OpenRouter 润色、历史、日志自动清理及 HUD 计时仍未实现。

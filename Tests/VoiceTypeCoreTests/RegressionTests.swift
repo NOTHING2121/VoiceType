@@ -3,6 +3,8 @@ import Testing
 
 @Suite("VoiceType deterministic regression", .serialized)
 struct VoiceTypeRegressionTests {
+    @Test("首次使用引导", arguments: OnboardingCases.all)
+    func onboarding(_ scenario: RegressionCase) throws { try scenario.run() }
     @Test("状态机", arguments: StateMachineCases.all)
     func stateMachine(_ scenario: RegressionCase) throws { try scenario.run() }
     @Test("处理与插入竞态", arguments: ProcessingCases.all)
@@ -22,6 +24,7 @@ struct VoiceTypeRegressionTests {
 import XCTest
 
 final class VoiceTypeRegressionTests: XCTestCase {
+    func testOnboarding() throws { for scenario in OnboardingCases.all { try scenario.run() } }
     func testStateMachine() throws { for scenario in StateMachineCases.all { try scenario.run() } }
     func testProcessing() throws { for scenario in ProcessingCases.all { try scenario.run() } }
     func testIntegration() throws { for scenario in IntegrationCases.all { try scenario.run() } }

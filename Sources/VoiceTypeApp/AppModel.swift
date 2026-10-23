@@ -19,6 +19,11 @@ final class AppModel: ObservableObject {
     @Published var rightOptionPressCount = 0
     @Published var lastFailure: String?
     private var lastDiagnostics: Data?
+    @Published var requestingPermission: String?
+    @Published var readinessIssue: String?
+    @Published var cleanup = CleanupSelection()
+    lazy var onboarding = OnboardingModel(app: self)
+    private var onboardingWindow: OnboardingWindowController?
 
     let localeOptions: [String]
     private(set) var session: LiveSession?
@@ -29,6 +34,8 @@ final class AppModel: ObservableObject {
         let supported = SpeechTranscriber.supportedLocaleIdentifiers
         let resolved = RecognitionLocaleResolver.resolve(override: defaults.string(forKey: "recognitionLocale"),
                                                          preferred: Locale.preferredLanguages, supported: supported)
+        if let data = defaults.data(forKey: "cleanupSelection"),
+           let saved = try? JSONDecoder().decode(CleanupSelection.self, from: data) { cleanup = saved }
         localeIdentifier = resolved
         privacyMode = defaults.bool(forKey: "privacyMode")
         serverConsent = defaults.bool(forKey: "appleServerConsent")
@@ -45,6 +52,7 @@ final class AppModel: ObservableObject {
         value.appleServerConsent = serverConsent
         value.polishEnabled = false
         value.allowPaste = true
+        value.cleanup = cleanup.preferences
         return value
     }
 
@@ -58,8 +66,12 @@ final class AppModel: ObservableObject {
             if state == .idle { self.applyPendingLocale() }
         }
         session = live
+        live.interceptHotkey = { [weak self] in self?.onboarding.intercept($0) ?? false }
+        live.onMachineChange = { [weak self] in self?.onboarding.observe($0) }
         refresh()
-        requestMicrophone()
+        if !defaults.bool(forKey: "onboardingCompleted.v1") {
+            DispatchQueue.main.async { [weak self] in self?.showOnboarding() }
+        }
         let timer = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in self?.refresh() }
         RunLoop.main.add(timer, forMode: .common)
         pollTimer = timer
@@ -79,6 +91,7 @@ final class AppModel: ObservableObject {
         }
         updateHotkeyStatus()
         onDeviceSupported = session?.transcriber.recognizer?.supportsOnDeviceRecognition ?? true
+        updateReadiness()
     }
 
     func restartHotkeys() {
@@ -114,24 +127,65 @@ final class AppModel: ObservableObject {
 
     private static func state(_ granted: Bool, denied: Bool) -> PermissionState { granted ? .granted : (denied ? .denied : .pending) }
 
-    // Sequential system prompts at launch only — never during a dictation session.
-    private func requestMicrophone() {
-        guard AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined else { requestSpeech(); return }
-        AVCaptureDevice.requestAccess(for: .audio) { _ in DispatchQueue.main.async { self.refresh(); self.requestSpeech() } }
+    var isBusy: Bool { sessionState != .idle }
+    var permissionsGranted: Bool { microphone == .granted && speech == .granted && accessibility == .granted }
+
+    func requestPermission(_ kind: String) {
+        guard !isBusy, requestingPermission == nil else { return }
+        switch kind {
+        case "microphone":
+            guard AVCaptureDevice.authorizationStatus(for: .audio) == .notDetermined else { openSettings("Privacy_Microphone"); return }
+            requestingPermission = kind
+            AVCaptureDevice.requestAccess(for: .audio) { [weak self] _ in
+                DispatchQueue.main.async { self?.requestingPermission = nil; self?.refresh() }
+            }
+        case "speech":
+            guard SFSpeechRecognizer.authorizationStatus() == .notDetermined else { openSettings("Privacy_SpeechRecognition"); return }
+            requestingPermission = kind
+            SFSpeechRecognizer.requestAuthorization { [weak self] _ in
+                DispatchQueue.main.async { self?.requestingPermission = nil; self?.refresh() }
+            }
+        default:
+            let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+            _ = AXIsProcessTrustedWithOptions(options)
+            openSettings("Privacy_Accessibility")
+        }
     }
 
-    private func requestSpeech() {
-        guard SFSpeechRecognizer.authorizationStatus() == .notDetermined else { requestAccessibility(); return }
-        SFSpeechRecognizer.requestAuthorization { _ in DispatchQueue.main.async { self.refresh(); self.requestAccessibility() } }
+    private func updateReadiness() {
+        if !permissionsGranted { readinessIssue = "请先完成麦克风、语音识别和辅助功能授权" }
+        else if SafetyProbe.secureEventInputEnabled { readinessIssue = "请先离开密码框，或关闭其他应用的安全键盘输入" }
+        else if session?.hotkeys.installedWhileTrusted != true { readinessIssue = "快捷键尚未连接，请点击重新连接" }
+        else if !onDeviceSupported && (privacyMode || !serverConsent) { readinessIssue = "此语言无法端侧识别，请更换语言或明确允许 Apple 服务器识别" }
+        else if AVCaptureDevice.default(for: .audio) == nil { readinessIssue = "没有可用麦克风，请连接输入设备" }
+        else if session?.transcriber.recognizer?.isAvailable != true { readinessIssue = "语音识别暂不可用，请检查语言与系统识别资源后重试" }
+        else { readinessIssue = nil }
     }
 
-    private func requestAccessibility() {
-        guard !AXIsProcessTrusted() else { return }
-        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
-        _ = AXIsProcessTrustedWithOptions(options)
+    func showOnboarding() {
+        guard !isBusy else { return }
+        if onboardingWindow == nil { onboardingWindow = OnboardingWindowController(model: onboarding) }
+        onboarding.open()
+        onboardingWindow?.present()
+    }
+
+    func closeOnboarding(completed: Bool) {
+        if completed {
+            guard onboarding.progress.canComplete, readinessIssue == nil else { return }
+            defaults.set(true, forKey: "onboardingCompleted.v1")
+        }
+        onboardingWindow?.close()
+    }
+
+    func setCleanup(fillers: Bool, enabled: Bool) {
+        if fillers { cleanup.chooseIsolatedFillers(enabled ? .remove : .keep) }
+        else { cleanup.chooseSentencePrefixes(enabled ? .remove : .keep) }
+        if let data = try? JSONEncoder().encode(cleanup) { defaults.set(data, forKey: "cleanupSelection") }
+        session?.send(.cleanupPreferencesChanged(cleanup.preferences))
     }
 
     func openSettings(_ anchor: String) {
+        guard !isBusy else { return }
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?\(anchor)") { NSWorkspace.shared.open(url) }
     }
 
@@ -151,11 +205,13 @@ final class AppModel: ObservableObject {
         privacyMode = enabled
         defaults.set(enabled, forKey: "privacyMode")
         session?.send(.privacyChanged(enabled))
+        updateReadiness()
     }
 
     /// Explicit, informed consent from a user action in the menu; revocation is immediate.
     func setServerConsent(_ enabled: Bool) {
         if enabled {
+            guard !isBusy else { return }
             NSApp.activate(ignoringOtherApps: true)
             let alert = NSAlert()
             alert.messageText = "允许使用 Apple 服务器识别？"
@@ -167,7 +223,9 @@ final class AppModel: ObservableObject {
         serverConsent = enabled
         defaults.set(enabled, forKey: "appleServerConsent")
         defaults.set(enabled ? ISO8601DateFormatter().string(from: Date()) : nil, forKey: "appleServerConsentAt")
+        defaults.set(enabled ? 1 : nil, forKey: "appleServerConsentVersion")
         session?.send(.serverConsentChanged(enabled))
+        updateReadiness()
     }
 
     func openMetrics() {
