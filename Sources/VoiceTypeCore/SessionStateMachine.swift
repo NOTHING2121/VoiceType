@@ -8,17 +8,51 @@ public struct SessionStateMachine {
     public private(set) var environment: SessionEnvironment
     public private(set) var rightOptionIsDown = false
     public private(set) var lastTime: Milliseconds = 0
+    public let timing: SessionTiming
     private var nextSession: UInt64 = 0
     private var nextOperation: UInt64 = 0
     private var effects: [SessionEffect] = []
-    public init(preferences: SessionPreferences = .init(), environment: SessionEnvironment = .init()) {
-        self.preferences = preferences; self.environment = environment
+    public init(preferences: SessionPreferences = .init(), environment: SessionEnvironment = .init(), timing: SessionTiming = .init()) {
+        self.preferences = preferences; self.environment = environment; self.timing = timing
     }
     public var isActive: Bool { [.recording, .finalizing, .processing, .inserting].contains(state) }
+    /// Read-only HUD text; it never feeds back into the reducer.
     public var hudMessage: String? {
-        guard state == .done, context?.metrics.deliveryPath == .copiedOnly else { return nil }
-        return "已复制，按 command+v粘贴"
+        switch state {
+        case .idle: return nil
+        case .recording: return context?.policy == .appleServerAllowed ? "正在聆听 · Apple 服务器识别" : "正在聆听 · 端侧识别"
+        case .finalizing: return "正在识别…"
+        case .processing: return "正在整理文字…"
+        case .inserting: return "正在插入…"
+        case .done:
+            switch context?.metrics.deliveryPath {
+            case .copiedOnly?: return "已复制，按 command+v粘贴"
+            case .some: return "已插入"
+            case nil: return nil
+            }
+        case .cancelled: return context?.metrics.cancellation == .accidentalNoSpeech ? nil : "已取消"
+        case .error: return context?.metrics.failure.map(Self.failureMessage)
+        }
     }
+    public static func failureMessage(_ reason: FailureReason) -> String {
+        switch reason {
+        case .permissionMissing: return "缺少权限，请在菜单栏 VoiceType 中完成授权"
+        case .deviceUnavailable: return "没有可用的麦克风"
+        case .recognitionUnavailable: return "语音识别暂不可用"
+        case .onDeviceRequired: return "隐私模式下，此语言无法端侧识别"
+        case .serverConsentRequired: return "此语言需 Apple 服务器识别，请先在菜单中同意"
+        case .noSpeech: return "没有识别到语音"
+        case .recognitionFailed: return "识别失败，请重试"
+        case .audioStartFailed: return "麦克风启动失败"
+        case .audioStopFailed: return "麦克风未能正常关闭"
+        case .unsafeTarget: return "密码框或安全输入已开启，未插入"
+        case .processingFailed: return "文字处理失败"
+        case .deliveryFailed: return "插入失败，文本未写入"
+        case .insertionUnknown: return "可能已经插入，请检查"
+        }
+    }
+    /// Current cumulative caption for the HUD (recording/finalizing only).
+    public var liveCaption: String { [.recording, .finalizing].contains(state) ? snapshot() : "" }
     public func isCurrent(_ token: OperationToken) -> Bool {
         isActive && context?.id == token.session && context?.activeOperation == token
     }
@@ -383,7 +417,7 @@ public struct SessionStateMachine {
         context?.strategy = strategy; context?.prepared = false; context?.writeCommitted = false
         let op = token(); context?.activeOperation = op
         mark("insertionStarted", now, once: true)
-        if context?.deadlines[.insertion] == nil { schedule(.insertion, at: context!.metrics.timestamps["insertionStarted"]! + 180) }
+        if context?.deadlines[.insertion] == nil { schedule(.insertion, at: context!.metrics.timestamps["insertionStarted"]! + timing.insertionWatchdog) }
         effects.append(.prepareInsertion(op, strategy, context!.deliveryText))
     }
     private mutating func nextInsertion(at now: Milliseconds) {

@@ -23,7 +23,7 @@ public protocol TextInserting: AnyObject {
     func prepare(_ token: OperationToken, strategy: InsertionStrategy, text: String, callback: @escaping ModuleCallback)
     func write(_ token: OperationToken, strategy: InsertionStrategy, text: String, callback: @escaping ModuleCallback)
 }
-public protocol HUDPresenting: AnyObject { func update(state: SessionState, message: String?) }
+public protocol HUDPresenting: AnyObject { func update(state: SessionState, message: String?, caption: String) }
 public protocol MetricsRecording: AnyObject { func record(_ metrics: SessionMetrics) }
 
 public enum ScheduleScope: Equatable { case sessionTimer(UInt64), module, clipboard }
@@ -70,8 +70,11 @@ public final class FakeHotkeyMonitor: HotkeyMonitoring {
 }
 public final class FakeHUD: HUDPresenting {
     public private(set) var updates: [(SessionState, String?)] = []
+    public private(set) var captions: [String] = []
     public init() {}
-    public func update(state: SessionState, message: String?) { updates.append((state, message)) }
+    public func update(state: SessionState, message: String?, caption: String) {
+        updates.append((state, message)); captions.append(caption)
+    }
 }
 public final class InMemoryMetrics: MetricsRecording {
     public private(set) var sessions: [SessionMetrics] = []

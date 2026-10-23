@@ -50,6 +50,12 @@ public struct OperationToken: Hashable, Codable {
     public let operation: UInt64
     public init(session: UInt64, operation: UInt64) { self.session = session; self.operation = operation }
 }
+/// Hard watchdogs. 180ms remains the design target; live adapters may need a wider
+/// verification watchdog so slow-but-real AX/paste confirmation is not mislabeled.
+public struct SessionTiming: Equatable {
+    public var insertionWatchdog: Milliseconds
+    public init(insertionWatchdog: Milliseconds = 180) { self.insertionWatchdog = insertionWatchdog }
+}
 public enum TimerKind: String, Codable { case hold, audioStart, recordingLimit, finalResult, audioStop, model, insertion, segment, recovery }
 public struct SessionTimer: Hashable {
     public let token: OperationToken

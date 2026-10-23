@@ -1,6 +1,6 @@
 import Foundation
 
-/// Serial orchestration boundary. The app currently does NOT connect this to real system APIs.
+/// Serial orchestration boundary. Live adapters must deliver every callback on the same serial (main) queue.
 public final class SessionCoordinator {
     public private(set) var machine: SessionStateMachine
     public let scheduler: SessionScheduling
@@ -11,6 +11,8 @@ public final class SessionCoordinator {
     public let hud: HUDPresenting
     public let metrics: MetricsRecording
     public var autoRunEffects = true
+    /// Observes the machine after each event (HUD lifetime, reset, safety polling). Must not mutate synchronously.
+    public var onAfterSend: ((SessionStateMachine) -> Void)?
     private var queue: [SessionEffect] = []
     private var draining = false
     public private(set) var visitedStates: [SessionState] = [.idle]
@@ -24,8 +26,9 @@ public final class SessionCoordinator {
         let before = machine.state
         queue += machine.send(event, at: scheduler.now)
         if before != machine.state { visitedStates.append(machine.state) }
-        hud.update(state: machine.state, message: machine.hudMessage)
+        hud.update(state: machine.state, message: machine.hudMessage, caption: machine.liveCaption)
         if autoRunEffects { runEffects() }
+        onAfterSend?(machine)
     }
     public func runEffects() {
         guard !draining else { return }

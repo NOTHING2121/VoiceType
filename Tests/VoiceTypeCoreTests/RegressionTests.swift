@@ -15,6 +15,8 @@ struct VoiceTypeRegressionTests {
     func invariants(_ scenario: RegressionCase) throws { try scenario.run() }
     @Test("独立审查回归", arguments: AuditCases.all)
     func audit(_ scenario: RegressionCase) throws { try scenario.run() }
+    @Test("真实链路纯逻辑", arguments: LiveSupportCases.all)
+    func liveSupport(_ scenario: RegressionCase) throws { try scenario.run() }
 }
 #elseif canImport(XCTest)
 import XCTest
@@ -26,6 +28,7 @@ final class VoiceTypeRegressionTests: XCTestCase {
     func testText() throws { for scenario in TextCases.all { try scenario.run() } }
     func testInvariants() throws { for scenario in InvariantCases.all { try scenario.run() } }
     func testAudit() throws { for scenario in AuditCases.all { try scenario.run() } }
+    func testLiveSupport() throws { for scenario in LiveSupportCases.all { try scenario.run() } }
 }
 #else
 #error("Tests require XCTest or the Swift 6 Testing framework")
