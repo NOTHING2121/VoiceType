@@ -8,34 +8,49 @@ public final class SystemHotkeyMonitor: HotkeyMonitoring {
     private var interpreter = HotkeyInterpreter()
     private var monitors: [Any] = []
     public private(set) var installedWhileTrusted = false
+    public private(set) var rightOptionPressCount = 0
     public init() {}
 
     public func install() {
         uninstall()
         let mask: NSEvent.EventTypeMask = [.flagsChanged, .keyDown]
-        if let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] event in self?.handle(event) }) {
+        guard AXIsProcessTrusted() else { return }
+        let global = NSEvent.addGlobalMonitorForEvents(matching: mask, handler: { [weak self] event in self?.handle(event) })
+        if let global = global {
             monitors.append(global)
         }
-        if let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in self?.handle(event); return event }) {
+        let local = NSEvent.addLocalMonitorForEvents(matching: mask, handler: { [weak self] event in self?.handle(event); return event })
+        if let local = local {
             monitors.append(local)
         }
-        installedWhileTrusted = AXIsProcessTrusted() && !monitors.isEmpty
+        installedWhileTrusted = AXIsProcessTrusted() && global != nil && local != nil
     }
 
     public func uninstall() {
         monitors.forEach { NSEvent.removeMonitor($0) }
         monitors = []
         installedWhileTrusted = false
+        let wasDown = interpreter.rightOptionDown
+        interpreter = HotkeyInterpreter()
+        if wasDown { onEvent?(.rightOptionUp) }
     }
 
     private func handle(_ event: NSEvent) {
         let events: [SessionEvent]
         switch event.type {
-        case .flagsChanged: events = interpreter.flagsChanged(keyCode: event.keyCode, flags: UInt64(event.modifierFlags.rawValue))
+        case .flagsChanged:
+            let flags = event.cgEvent?.flags.rawValue ?? UInt64(event.modifierFlags.rawValue)
+            let sideBits = flags & (HotkeyInterpreter.rightOptionMask | HotkeyInterpreter.leftOptionMask)
+            let physical: Bool? = sideBits == 0 && flags & HotkeyInterpreter.optionMask != 0
+                ? CGEventSource.keyState(.combinedSessionState, key: CGKeyCode(HotkeyInterpreter.rightOptionKeyCode)) : nil
+            events = interpreter.flagsChanged(keyCode: event.keyCode, flags: flags, physicalRightOptionDown: physical)
         case .keyDown: events = interpreter.keyDown(keyCode: event.keyCode, isRepeat: event.isARepeat)
         default: events = []
         }
-        events.forEach { onEvent?($0) }
+        events.forEach {
+            if case .rightOptionDown = $0 { rightOptionPressCount += 1 }
+            onEvent?($0)
+        }
     }
 
     /// Called by the session guard: synthesizes a missed release from the physical modifier state.

@@ -41,6 +41,11 @@ struct MenuContent: View {
         permissionRow("语音识别", model.speech, anchor: "Privacy_SpeechRecognition")
         permissionRow("辅助功能（快捷键与插入）", model.accessibility, anchor: "Privacy_Accessibility")
         Button("重新检查权限") { model.refresh() }
+        Text(model.hotkeyStatus)
+        Text("已收到右 Option：\(model.rightOptionPressCount) 次")
+        if let failure = model.lastFailure { Text("最近提示：\(failure)") }
+        Button("重新连接快捷键") { model.restartHotkeys() }
+            .disabled(model.sessionState != .idle)
         Divider()
         Menu("识别语言：\(AppModel.displayName(model.localeIdentifier))") {
             ForEach(model.localeOptions, id: \.self) { identifier in

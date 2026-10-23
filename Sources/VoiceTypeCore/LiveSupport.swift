@@ -17,9 +17,14 @@ public struct HotkeyInterpreter {
     public private(set) var rightOptionDown = false
     public init() {}
 
-    public mutating func flagsChanged(keyCode: UInt16, flags: UInt64) -> [SessionEvent] {
+    public mutating func flagsChanged(keyCode: UInt16, flags: UInt64, physicalRightOptionDown: Bool? = nil) -> [SessionEvent] {
         if keyCode == Self.rightOptionKeyCode {
-            let down = flags & Self.rightOptionMask != 0
+            // Some event sources omit the device-dependent left/right bits. The event's
+            // key code still identifies right Option; use its physical state in that case.
+            let sideBits = flags & (Self.rightOptionMask | Self.leftOptionMask)
+            let down = sideBits != 0
+                ? flags & Self.rightOptionMask != 0
+                : (physicalRightOptionDown ?? (flags & Self.optionMask != 0))
             if down && !rightOptionDown {
                 rightOptionDown = true
                 return [.rightOptionDown(eligible: flags & Self.otherModifiers == 0)]

@@ -15,6 +15,10 @@ final class AppModel: ObservableObject {
     @Published var privacyMode: Bool
     @Published var serverConsent: Bool
     @Published var onDeviceSupported = true
+    @Published var hotkeyStatus = "快捷键监听：尚未启动"
+    @Published var rightOptionPressCount = 0
+    @Published var lastFailure: String?
+    private var lastDiagnostics: Data?
 
     let localeOptions: [String]
     private(set) var session: LiveSession?
@@ -49,11 +53,12 @@ final class AppModel: ObservableObject {
         live.onStateChange = { [weak self] state in
             guard let self = self else { return }
             if self.sessionState != state { self.sessionState = state }
+            if state == .error { self.lastFailure = self.session?.coordinator.machine.hudMessage }
+            self.updateHotkeyStatus()
             if state == .idle { self.applyPendingLocale() }
         }
         session = live
         refresh()
-        if AXIsProcessTrusted() { live.hotkeys.install() }
         requestMicrophone()
         let timer = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in self?.refresh() }
         RunLoop.main.add(timer, forMode: .common)
@@ -67,8 +72,40 @@ final class AppModel: ObservableObject {
                             denied: [.denied, .restricted].contains(SFSpeechRecognizer.authorizationStatus()))
         let trusted = AXIsProcessTrusted()
         accessibility = trusted ? .granted : .denied
-        if let session = session, trusted, !session.hotkeys.installedWhileTrusted { session.hotkeys.install() }
+        if let session = session {
+            if trusted, !session.hotkeys.installedWhileTrusted { session.hotkeys.install() }
+            if !trusted, session.hotkeys.installedWhileTrusted { session.hotkeys.uninstall() }
+        }
+        updateHotkeyStatus()
         onDeviceSupported = session?.transcriber.recognizer?.supportsOnDeviceRecognition ?? true
+    }
+
+    func restartHotkeys() {
+        guard sessionState == .idle else { return }
+        session?.hotkeys.install()
+        refresh()
+    }
+
+    private func updateHotkeyStatus() {
+        rightOptionPressCount = session?.hotkeys.rightOptionPressCount ?? 0
+        if !AXIsProcessTrusted() { hotkeyStatus = "快捷键监听：请授权辅助功能" }
+        else if SafetyProbe.secureEventInputEnabled { hotkeyStatus = "快捷键暂停：请先离开密码框或安全输入" }
+        else if session?.hotkeys.installedWhileTrusted == true { hotkeyStatus = "快捷键监听：已启动" }
+        else { hotkeyStatus = "快捷键监听失败，请重新连接" }
+        // Diagnostics contain only readiness/counters, never ordinary keys or dictated text.
+        let values: [String: Any] = ["bundlePath": Bundle.main.bundlePath,
+                                    "hotkeyStatus": hotkeyStatus, "rightOptionPressCount": rightOptionPressCount,
+                                    "microphone": microphone.rawValue, "speech": speech.rawValue,
+                                    "accessibility": accessibility.rawValue, "state": sessionState.rawValue,
+                                    "lastFailure": lastFailure ?? ""]
+        if let data = try? JSONSerialization.data(withJSONObject: values, options: [.sortedKeys]), data != lastDiagnostics {
+            let directory = MetricsLog.defaultDirectory
+            do {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                try data.write(to: directory.appendingPathComponent("diagnostics.json"), options: .atomic)
+                lastDiagnostics = data
+            } catch { /* Diagnostics must never interrupt dictation. */ }
+        }
     }
 
     private static func state(_ granted: Bool, denied: Bool) -> PermissionState { granted ? .granted : (denied ? .denied : .pending) }

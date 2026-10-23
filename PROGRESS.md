@@ -121,3 +121,11 @@ HUD 为 `.nonactivatingPanel` 的 NSPanel 子类，`canBecomeKey/Main` 恒 false
 - [x] 实现 `TextInserter`：AX → 剪贴板粘贴 → 复制并提示。
 - [ ] 用户在备忘录完成实机听写验收，并记录首批真实延迟。
 - [ ] 完成设置／历史、端到端验证及实测延迟记录。
+
+## 右 Option 无响应修复与首次实机验收（2026-10-23）
+
+用户反馈菜单三项权限均已授权，但右 Option 无响应。确认运行实例来自 `build/VoiceType.app`。修复按键解析只接受设备位 0x40 的限制：优先读取 CGEvent 原始 flags，缺少左右 Option 设备位时读取右 Option 物理键状态；纯解析器也支持设备无关 Option 标记。监听就绪必须同时具备全局与本地 monitor，重新安装清空旧按键状态；删除启动时重复安装。菜单新增监听／安全输入状态、右 Option 计数、重新连接入口和保留的最近错误，diagnostics.json 仅记录运行路径、权限、状态、计数与错误，不含普通按键或听写正文。
+
+验证：新增 3 个按键回归场景（缺少设备位、左右 Option 松开区分、缺少设备位仍拒绝组合键）；`scripts/test.sh --filter VoiceTypeCoreTests` 206 个核心场景＋1 个冒烟通过。全套测试中的系统适配层因当前受限运行环境无法访问命名剪贴板失败，未声称全部通过。默认 Release 的 dsymutil 被环境拒绝，使用相同构建／打包流程加 `-debug-info-format none` 构建成功，签名严格校验通过。临时构建脚本及原始日志保存在 `.work/`。
+
+已退出旧进程并从 Finder 启动修复版，三项权限保留、监听已启动。用户实测明确确认“出现浮窗，文字也输入了”；实际指标记录为 zh-CN 端侧识别、final 结果、insertedAX、done，右 Option 计数 1，松键到插入 135ms（单次样本，不代表稳定性能）。`outputs/voicetype/VoiceType.app` 同步更新；旧交付应用备份于 `.work/VoiceType-before-hotkey-fix.app`。本次恢复由按键兼容修复、监听重建和进程重启共同验证，未采集旧进程事件流，不能独立归因于其中某一项。

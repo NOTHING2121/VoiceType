@@ -28,6 +28,25 @@ enum LiveSupportCases {
             try check(names(h.flagsChanged(keyCode: 61, flags: nonCoalesced)) == ["up"])
             try check(names(h.flagsChanged(keyCode: 61, flags: nonCoalesced)).isEmpty, "无配对松开被忽略")
         },
+        RegressionCase("缺少设备位的右Option仍产生按下与松开") {
+            var h = HotkeyInterpreter()
+            try check(names(h.flagsChanged(keyCode: 61, flags: option | nonCoalesced)) == ["down"])
+            try check(names(h.flagsChanged(keyCode: 61, flags: option | nonCoalesced)).isEmpty)
+            try check(names(h.flagsChanged(keyCode: 61, flags: nonCoalesced)) == ["up"])
+        },
+        RegressionCase("缺少设备位时物理键状态区分左右Option同时按下") {
+            var h = HotkeyInterpreter()
+            try check(names(h.flagsChanged(keyCode: 61, flags: option, physicalRightOptionDown: true)) == ["down"])
+            // Left Option remains held after right Option is released.
+            try check(names(h.flagsChanged(keyCode: 61, flags: option, physicalRightOptionDown: false)) == ["up"])
+            try check(names(h.flagsChanged(keyCode: 58, flags: option, physicalRightOptionDown: false)).isEmpty)
+        },
+        RegressionCase("缺少设备位时仍拒绝右Option组合键") {
+            for other in [HotkeyInterpreter.commandMask, HotkeyInterpreter.shiftMask, HotkeyInterpreter.controlMask] {
+                var h = HotkeyInterpreter()
+                try check(names(h.flagsChanged(keyCode: 61, flags: option | other, physicalRightOptionDown: true)) == ["down-ineligible"])
+            }
+        },
         RegressionCase("已按Cmd/Shift/Ctrl/左Option时右Option不合格") {
             for other in [HotkeyInterpreter.commandMask, HotkeyInterpreter.shiftMask, HotkeyInterpreter.controlMask, HotkeyInterpreter.leftOptionMask] {
                 var h = HotkeyInterpreter()

@@ -24,6 +24,12 @@ open build/VoiceType.app
 
 无签名证书时，`build-app.sh` 使用 ad-hoc 签名并把指定要求设为 `identifier "com.voicetype.app"`，让重建后系统权限尽量保留（仅限本地开发）。有开发证书可设 `CODESIGN_IDENTITY`。本机环境为 Swift 6.4 / macOS 27.0.1 / 仅 Command Line Tools，测试用 Swift Testing；源代码保留 XCTest 入口与 Swift 5 语言模式，部署目标 macOS 13，尚未在 macOS 13 实机验证。
 
+## 右 Option 没反应时
+
+点开菜单确认三项权限已授权，并查看“快捷键监听”状态。若显示安全输入暂停，离开密码框后重试；若监听失败，点击“重新连接快捷键”。关闭菜单，在普通输入框按右 Option，再查看“已收到右 Option”的次数和“最近提示”。次数增加说明按键已进入应用；最近提示保留启动录音／识别失败的原因。
+
+`~/Library/Application Support/VoiceType/diagnostics.json` 保存当前应用路径、权限、监听状态、右 Option 次数和最近错误，不记录普通按键或听写正文。设备左右标记缺失时，监听器读取右 Option 的物理键状态；重新连接会清空旧按键状态。全局与本地监听都安装成功后才显示监听已启动。
+
 ## 模块划分
 
 | 模块 | 本阶段实现 |
