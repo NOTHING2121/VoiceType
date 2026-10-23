@@ -22,6 +22,10 @@
     <string>13.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>VoiceType 只在你按住右 Option 或开启免提听写时使用麦克风，把语音转成文字。</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>VoiceType 使用 Apple 语音识别把你的语音转成文字，优先在本机端侧处理。</string>
     <key>NSHighResolutionCapable</key>
     <true/>
 </dict>

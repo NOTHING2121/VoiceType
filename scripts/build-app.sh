@@ -26,9 +26,18 @@ mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 cp "$ROOT_DIR/Resources/Info.plist" "$APP_BUNDLE/Contents/Info.plist"
 cp "$EXECUTABLE" "$APP_BUNDLE/Contents/MacOS/VoiceType"
 chmod 755 "$APP_BUNDLE/Contents/MacOS/VoiceType"
-
 if command -v codesign >/dev/null 2>&1; then
-    codesign --force --sign - --timestamp=none "$APP_BUNDLE"
+    BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_BUNDLE/Contents/Info.plist")"
+    if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
+        # A real identity (e.g. "Apple Development: …") gives the most stable TCC permissions.
+        codesign --force --sign "$CODESIGN_IDENTITY" --timestamp=none "$APP_BUNDLE"
+    else
+        # Local ad-hoc build. An identifier-based designated requirement lets macOS privacy grants
+        # (Microphone / Speech / Accessibility) survive rebuilds instead of binding to one cdhash.
+        # Trade-off: any ad-hoc binary claiming this bundle ID would match; development use only.
+        codesign --force --sign - --timestamp=none --identifier "$BUNDLE_ID" \
+            -r="designated => identifier \"$BUNDLE_ID\"" "$APP_BUNDLE"
+    fi
 fi
 
 plutil -lint "$APP_BUNDLE/Contents/Info.plist"
