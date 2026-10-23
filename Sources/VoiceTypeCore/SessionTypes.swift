@@ -50,7 +50,7 @@ public struct OperationToken: Hashable, Codable {
     public let operation: UInt64
     public init(session: UInt64, operation: UInt64) { self.session = session; self.operation = operation }
 }
-public enum TimerKind: String, Codable { case hold, recordingLimit, finalResult, audioStop, model, insertion, segment, recovery }
+public enum TimerKind: String, Codable { case hold, audioStart, recordingLimit, finalResult, audioStop, model, insertion, segment, recovery }
 public struct SessionTimer: Hashable {
     public let token: OperationToken
     public let kind: TimerKind
@@ -93,6 +93,14 @@ public struct SessionMetrics: Codable, Equatable {
     public var stopToCopy: Milliseconds? { deliveryPath == .copiedOnly ? elapsed("stopIntent", "delivered") : nil }
 }
 
+public struct TranscriptChunk {
+    public let token: OperationToken
+    public let audioEnd: Milliseconds?
+    public let text: String
+    public init(token: OperationToken, audioEnd: Milliseconds? = nil, text: String) {
+        self.token = token; self.audioEnd = audioEnd; self.text = text
+    }
+}
 public struct SessionContext {
     public let id: UInt64
     public var preferences: SessionPreferences
@@ -108,9 +116,17 @@ public struct SessionContext {
     public var recognizerToken: OperationToken?
     public var acceptedRecognizers: Set<OperationToken> = []
     public var committedAudioEnd: Milliseconds = -1
-    public var committedSegments: [String] = []
+    public var seenAudioEnds: Set<Milliseconds> = []
+    public var transcriptChunks: [TranscriptChunk] = []
+    public var committedSegments: [String] {
+        transcriptChunks.sorted {
+            $0.token.operation == $1.token.operation ? ($0.audioEnd ?? .max) < ($1.audioEnd ?? .max) : $0.token.operation < $1.token.operation
+        }.map { $0.text }
+    }
+    public var pendingPartials: [OperationToken: String] = [:]
     public var partial = ""
     public var final: String?
+    public var finalUsedPartial = false
     public var frozenText = ""
     public var localText = ""
     public var deliveryText = ""
@@ -132,9 +148,13 @@ public enum ModuleResponse {
     case audioStartFailed
     case audioStopped
     case audioStopFailed
+    case audioEnded
     case voiceDetected
+    /// Cumulative hypothesis for this recognizer task; replaces previous hypotheses.
     case partial(String)
+    /// Complete result for this task; replaces its provisional/committed subfragments.
     case final(String)
+    /// Canonical non-overlapping fragment. The adapter maps replay overlap to a stable global audioEnd identity.
     case segmentFinal(text: String, audioEnd: Milliseconds)
     case recognitionFailed
     case localProcessed(String)
@@ -153,6 +173,7 @@ public enum SessionEvent {
     case applicationChanged(Int32)
     case privacyChanged(Bool)
     case serverConsentChanged(Bool)
+    case cleanupPreferencesChanged(CleanupPreferences)
     case environmentChanged(SessionEnvironment)
     case safetyChanged(SafetySignals)
     case interrupted(InterruptReason)

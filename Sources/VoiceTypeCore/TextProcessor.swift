@@ -5,19 +5,25 @@ public struct TextProcessor {
     /// No LLM calls. Optional destructive rules require an explicit .remove choice.
     public func clean(_ input: String, preferences: CleanupPreferences = .init()) -> String {
         var text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if text.utf8.count > 1_000_000 { return text }
         // Formatting inside quotes/code is not safely inferable: keep it intact.
         if text.contains("`") || text.contains("\"") || text.contains("“") || text.contains("「") { return text }
         text = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
         text = replacing("[ \\t]{2,}", in: text, with: " ")
         text = replacing("([。！？!?，,])\\1+", in: text, with: "$1")
         text = replacing(" +([，。！？、；：])", in: text, with: "$1")
+        var patterns: [String] = []
         if preferences.isolatedFillers == .remove {
             // Only an explicit hesitation followed by a separator, never the standalone answer 嗯。
-            text = replacing("(^|[。！？!?\\n])(?:呃|额)[，,、] *", in: text, with: "$1")
+            patterns.append("(?:呃|额)[，,、] *")
         }
         if preferences.sentencePrefixes == .remove {
             // 那个方案 and 就是这样 are not fillers: require a following comma.
-            text = replacing("(^|[。！？!?\\n])(?:那个|就是)[，,] *", in: text, with: "$1")
+            patterns.append("(?:那个|就是)[，,] *")
+        }
+        if !patterns.isEmpty {
+            // Consume the entire permitted prefix in one pass, including alternating rules.
+            text = replacing("(^|[。！？!?\\n])(?:" + patterns.joined(separator: "|") + ")+", in: text, with: "$1")
         }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -37,6 +43,13 @@ public struct TextProcessor {
         for prefix in ["以下是", "润色后的", "Here is", "Here’s", "Summary:"] where candidate.hasPrefix(prefix) { return false }
         for pattern in ["[0-9]+(?:[.,:/-][0-9]+)*", "https?://[^\\s，。！？]+"] {
             if matches(pattern, in: candidate) != matches(pattern, in: original) { return false }
+        }
+        let inputHan = matches("\\p{Han}", in: original).count
+        let outputHan = matches("\\p{Han}", in: candidate).count
+        if inputHan >= 2 && outputHan == 0 { return false }
+        if inputHan == 0 && matches("[A-Za-z]", in: original).count >= 3 && outputHan > 0 && matches("[A-Za-z]", in: candidate).isEmpty { return false }
+        for symbol in ["%", "$", "€", "¥", "+", "=", "<", ">", "@", "#"] {
+            if original.components(separatedBy: symbol).count != candidate.components(separatedBy: symbol).count { return false }
         }
         var protected = ["不", "没", "未", "not", "never"]
         if preferences.isolatedFillers != .remove { protected += ["嗯", "呃", "额"] }
