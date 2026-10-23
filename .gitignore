@@ -1,0 +1,33 @@
+# macOS
+.DS_Store
+
+# Swift / Xcode build outputs
+.build/
+DerivedData/
+build/
+*.xcarchive
+*.dSYM/
+*.dSYM.zip
+
+# Per-user Xcode state
+xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# Local secrets: never commit credentials
+.env
+.env.*
+*.pem
+*.p12
+*.pfx
+*.key
+secrets/
+
+# Local task inputs and intermediate work
+inputs/
+.work/
+
+# Local recordings and diagnostic output (not source assets)
+recordings/
+logs/
