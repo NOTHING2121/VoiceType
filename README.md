@@ -20,7 +20,7 @@ Swift 5.9，SwiftUI + AppKit，macOS 13+。应用设置 `LSUIElement`，不显�
 - `AudioRecorder`：AVAudioEngine 采集、16kHz 单声道转换和本地声音检测。
 - `Transcriber`：SFSpeechRecognizer 实时字幕与最终识别，共享一个识别来源。
 - `TextProcessor`：确定性的本地清洗，加可关闭／超时跳过的模型润色。
-- `TextInserter`：通过安全门后 AX → 确定未写入时粘贴 → 复制并提示；密码框禁止自动注入，结果未知不得自动重发。
+- `TextInserter`：默认安全，只有 `AXSecureTextField` subrole 或 `IsSecureEventInputEnabled() == true` 才安全阻断；AX → 未执行／确定未写入时粘贴 → 复制并提示，写入结果未知不得自动重发。粘贴后等 500ms，仅剪贴板 `changeCount` 仍匹配本次写入版本时恢复原内容，否则不动。
 - `SessionStateMachine`：唯一状态源，纯 Swift reducer，可用虚拟时间单测。
 - HUD、Onboarding、设置／历史：反馈、授权、配置与留存控制。
 
